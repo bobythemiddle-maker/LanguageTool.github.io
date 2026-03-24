@@ -87,22 +87,18 @@
 
     <div id="builder-screen">
         <h2>Bulk Import</h2>
-        <p style="font-size: 0.7rem; color: var(--text-sub); margin-bottom: 15px;">Paste one word per line. They will be paired automatically.</p>
-        
         <div class="bulk-container">
             <div class="bulk-box">
                 <label>Language One</label>
-                <textarea id="bulk-spa" class="bulk-input" placeholder="Appel&#10;Bes&#10;Banaan"></textarea>
+                <textarea id="bulk-spa" class="bulk-input" placeholder="Hola"></textarea>
             </div>
             <div class="bulk-box">
                 <label>Language Two</label>
-                <textarea id="bulk-eng" class="bulk-input" placeholder="Apple&#10;Berry&#10;Banana"></textarea>
+                <textarea id="bulk-eng" class="bulk-input" placeholder="Hello"></textarea>
             </div>
         </div>
-
         <button class="btn" onclick="processBulk()">Combine & Load</button>
         <div id="preview-box">Cards Loaded: 0</div>
-        
         <button class="btn" style="background:var(--success)" onclick="startBuilderQuiz()">Start Quiz</button>
         <button class="btn btn-secondary" onclick="showScreen('start-screen')">Back</button>
     </div>
@@ -143,26 +139,44 @@
             document.body.setAttribute('data-theme', document.body.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
         }
 
+        // NEW: Handles the TXT file import
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const lines = e.target.result.split('\n');
+                builderData = {};
+                lines.forEach(line => {
+                    const parts = line.split(':');
+                    if (parts.length === 2) {
+                        builderData[parts[0].trim().toLowerCase()] = parts[1].trim().toLowerCase();
+                    }
+                });
+                
+                if (Object.keys(builderData).length > 0) {
+                    quizData = {...builderData};
+                    startQuiz();
+                } else {
+                    alert("Could not find any words. Make sure they are formatted like 'Word:Translation'");
+                }
+            };
+            reader.readAsText(file);
+        }
+
         function processBulk() {
             const spaText = document.getElementById('bulk-spa').value.split('\n').map(s => s.trim()).filter(s => s !== "");
             const engText = document.getElementById('bulk-eng').value.split('\n').map(s => s.trim()).filter(s => s !== "");
-
-            if(spaText.length !== engText.length) {
-                alert(`Warning: Lists are uneven! Side A has ${spaText.length} words, Side B has ${engText.length}.`);
-            }
-
             const limit = Math.min(spaText.length, engText.length);
             for(let i = 0; i < limit; i++) {
                 builderData[spaText[i].toLowerCase()] = engText[i].toLowerCase();
             }
-
-            document.getElementById('preview-box').innerText = `Cards Loaded (${Object.keys(builderData).length}): ` + Object.keys(builderData).join(', ');
-            document.getElementById('bulk-spa').value = '';
-            document.getElementById('bulk-eng').value = '';
+            document.getElementById('preview-box').innerText = `Cards Loaded (${Object.keys(builderData).length})`;
         }
 
         function startBuilderQuiz() {
-            if(Object.keys(builderData).length === 0) return alert("Paste words and click Combine first!");
+            if(Object.keys(builderData).length === 0) return alert("Add words first!");
             quizData = {...builderData};
             startQuiz();
         }
@@ -202,7 +216,6 @@
         }
 
         function nextCard() {
-            // Reset the button back to check mode for the next card
             document.getElementById('mainBtn').onclick = checkAnswer;
             document.getElementById('card-1').classList.add('swipe-out');
             currentIndex++;
@@ -215,13 +228,7 @@
         }
 
         document.getElementById('answerInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                if(document.getElementById('mainBtn').innerText === "Next") {
-                    nextCard();
-                } else {
-                    checkAnswer();
-                }
-            }
+            if (e.key === 'Enter') checkAnswer();
         });
     </script>
 </body>
