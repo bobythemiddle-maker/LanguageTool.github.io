@@ -17,6 +17,7 @@
             --glass-border: rgba(255, 255, 255, 0.1);
             --success: #4ade80;
             --error: #fb7185;
+            --warning: #fbbf24;
         }
 
         [data-theme="light"] {
@@ -47,6 +48,9 @@
         }
         #start-screen { display: flex; }
 
+        .progress-container { width: 100%; height: 6px; background: rgba(0,0,0,0.2); border-radius: 10px; margin-bottom: 20px; overflow: hidden; border: 1px solid var(--glass-border); }
+        .progress-fill { height: 100%; width: 0%; background: var(--accent); box-shadow: 0 0 10px var(--accent-glow); transition: width 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+
         .btn { background: var(--accent); color: white; border: none; padding: 16px; border-radius: 14px; font-size: 1rem; font-weight: 700; cursor: pointer; margin: 8px 0; width: 100%; transition: 0.2s; }
         .btn:hover { filter: brightness(1.1); transform: translateY(-2px); }
         .btn-secondary { background: rgba(148, 163, 184, 0.2); color: var(--text-main); }
@@ -63,12 +67,12 @@
 
         #preview-box { width: 100%; height: 50px; background: rgba(0,0,0,0.1); border-radius: 10px; padding: 10px; font-size: 0.7rem; overflow-y: auto; color: var(--text-sub); margin-bottom: 15px; border: 1px dashed var(--glass-border); }
 
-        .stack-container { position: relative; width: 100%; height: 160px; margin: 20px 0 30px; }
+        .stack-container { position: relative; width: 100%; height: 160px; margin: 0 0 30px; }
         .card { position: absolute; inset: 0; background: var(--card-gradient); border-radius: 24px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 800; border: 1px solid var(--glass-border); transition: 0.5s; padding: 20px; text-align: center; }
         .swipe-out { transform: translateX(450px) rotate(15deg) !important; opacity: 0 !important; }
         
         #answerInput { width: 100%; background: var(--input-bg); border: 2px solid var(--glass-border); padding: 16px; border-radius: 14px; color: var(--text-main); text-align: center; font-size: 1.2rem; outline: none; }
-        #feedback { margin-top: 15px; height: 20px; font-weight: 700; font-size: 0.8rem; }
+        #feedback { margin-top: 15px; height: 20px; font-weight: 700; font-size: 0.8rem; transition: 0.2s; }
     </style>
 </head>
 <body>
@@ -104,6 +108,9 @@
     </div>
 
     <div id="quiz-screen">
+        <div class="progress-container">
+            <div id="progress-bar" class="progress-fill"></div>
+        </div>
         <div class="stack-container">
             <div id="card-1" class="card"></div>
         </div>
@@ -117,6 +124,7 @@
 
     <div id="result-screen">
         <h1>Complete!</h1>
+        <div class="progress-container"><div class="progress-fill" style="width:100%"></div></div>
         <h2 id="final-score" style="color: var(--accent);"></h2>
         <button class="btn" onclick="location.reload()">Back to Menu</button>
     </div>
@@ -127,6 +135,36 @@
         let currentIndex = 0;
         let score = 0;
         let builderData = {};
+
+        // --- SMART UNDERSTANDING LOGIC (Levenshtein Distance) ---
+        function getSimilarity(s1, s2) {
+            let longer = s1.length < s2.length ? s2 : s1;
+            let shorter = s1.length < s2.length ? s1 : s2;
+            if (longer.length === 0) return 1.0;
+            return (longer.length - editDistance(longer, shorter)) / parseFloat(longer.length);
+        }
+
+        function editDistance(s1, s2) {
+            s1 = s1.toLowerCase(); s2 = s2.toLowerCase();
+            let costs = new Array();
+            for (let i = 0; i <= s1.length; i++) {
+                let lastValue = i;
+                for (let j = 0; j <= s2.length; j++) {
+                    if (i == 0) costs[j] = j;
+                    else {
+                        if (j > 0) {
+                            let newValue = costs[j - 1];
+                            if (s1.charAt(i - 1) != s2.charAt(j - 1))
+                                newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                            costs[j - 1] = lastValue;
+                            lastValue = newValue;
+                        }
+                    }
+                }
+                if (i > 0) costs[s2.length] = lastValue;
+            }
+            return costs[s2.length];
+        }
 
         function showScreen(id) {
             ['start-screen', 'quiz-screen', 'result-screen', 'builder-screen'].forEach(s => {
@@ -139,11 +177,9 @@
             document.body.setAttribute('data-theme', document.body.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
         }
 
-        // NEW: Handles the TXT file import
         function handleFileUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
-
             const reader = new FileReader();
             reader.onload = function(e) {
                 const lines = e.target.result.split('\n');
@@ -154,12 +190,9 @@
                         builderData[parts[0].trim().toLowerCase()] = parts[1].trim().toLowerCase();
                     }
                 });
-                
                 if (Object.keys(builderData).length > 0) {
                     quizData = {...builderData};
                     startQuiz();
-                } else {
-                    alert("Could not find any words. Make sure they are formatted like 'Word:Translation'");
                 }
             };
             reader.readAsText(file);
@@ -188,9 +221,16 @@
             loadCard();
         }
 
+        function updateProgress() {
+            const percent = (currentIndex / keys.length) * 100;
+            document.getElementById('progress-bar').style.width = percent + "%";
+        }
+
         function loadCard() {
+            updateProgress();
             if(currentIndex >= keys.length) return showResults();
             document.getElementById('mainBtn').innerText = "Check";
+            document.getElementById('mainBtn').onclick = checkAnswer;
             document.getElementById('card-1').innerText = keys[currentIndex];
             document.getElementById('card-1').classList.remove('swipe-out');
             document.getElementById('answerInput').value = '';
@@ -200,8 +240,19 @@
 
         function checkAnswer() {
             let val = document.getElementById('answerInput').value.trim().toLowerCase();
-            if(val === quizData[keys[currentIndex]]) {
+            let correct = quizData[keys[currentIndex]].toLowerCase();
+            
+            // Check for exact match OR 80% similarity
+            let similarity = getSimilarity(val, correct);
+            let containsMainPart = val.includes(correct) || correct.includes(val);
+
+            if (val === correct) {
                 score++; nextCard();
+            } else if (similarity > 0.8 || (val.length > 3 && containsMainPart)) {
+                document.getElementById('feedback').innerText = "CLOSE ENOUGH! (Ans: " + correct + ")";
+                document.getElementById('feedback').style.color = 'var(--warning)';
+                score++;
+                setTimeout(nextCard, 1200); // Small delay to let user see the correction
             } else {
                 document.getElementById('feedback').innerText = "WRONG";
                 document.getElementById('feedback').style.color = 'var(--error)';
@@ -216,7 +267,6 @@
         }
 
         function nextCard() {
-            document.getElementById('mainBtn').onclick = checkAnswer;
             document.getElementById('card-1').classList.add('swipe-out');
             currentIndex++;
             setTimeout(loadCard, 400);
@@ -228,7 +278,13 @@
         }
 
         document.getElementById('answerInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') checkAnswer();
+            if (e.key === 'Enter') {
+                if(document.getElementById('mainBtn').innerText === "Next") {
+                    nextCard();
+                } else {
+                    checkAnswer();
+                }
+            }
         });
     </script>
 </body>
